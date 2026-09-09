@@ -487,3 +487,16 @@ Docker was installed but its daemon was not running, so the actual Linux contain
 invocations have not been executed locally. Workflow events, environment protection,
 PR commenting, and live paid DeepSec analysis remain deployment/pilot checks in the
 target GitHub repository. See `AUTOFIX.md` for the separately authorized design.
+
+## Draft pull requests
+
+Draft PRs skip the security scan jobs. Mark a PR **Ready for review** to trigger
+Semgrep, Trivy, and the eligible DeepSec review; further updates rerun them while
+it remains ready. Returning a PR to draft cancels an active scan through its
+concurrency group. GitHub may still show skipped workflow entries. The trusted
+reporter rechecks draft state before starting AI and before publishing; an AI
+request already in progress may finish, but its report is not published while
+the PR remains draft. Existing comments and check results are retained as history.
+
+Trivy uses a disposable runner-disk cache because its vulnerability database can
+exceed the container's 1 GB `/tmp` limit. The cache is never reused between runs.
