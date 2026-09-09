@@ -7,7 +7,7 @@ function fixture() {
   const run = {id: 4, run_attempt: 1, event: 'pull_request', status: 'completed',
     conclusion: 'success', path: '.github/workflows/security-scan.yml', workflow_id: 2,
     head_sha: sha, head_repository: {full_name: 'fork/repo'}, pull_requests: []};
-  const pr = {number: 3, state: 'open', base: {repo: {full_name: 'org/repo'}},
+  const pr = {number: 3, state: 'open', draft: false, base: {repo: {full_name: 'org/repo'}},
     head: {sha, repo: {full_name: 'fork/repo'}}};
   const api = {context: {repo: {owner: 'org', repo: 'repo'}, payload: {workflow_run: {...run}}},
     github: {paginate: async () => [{number: 3}], rest: {
@@ -39,5 +39,16 @@ test('refuses an older run attempt', async () => {
 });
 test('refuses source repository mismatch', async () => {
   const {api, pr} = fixture(); pr.head.repo.full_name = 'other/repo';
+  assert.equal(await current(api), null);
+});
+
+test('refuses a PR returned to draft before reporting', async () => {
+  const {api, pr} = fixture();
+  assert.ok(await current(api));
+  pr.draft = true;
+  assert.equal(await current(api), null);
+});
+test('fails closed if draft status is missing', async () => {
+  const {api, pr} = fixture(); delete pr.draft;
   assert.equal(await current(api), null);
 });

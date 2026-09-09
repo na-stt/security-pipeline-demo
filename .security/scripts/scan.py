@@ -37,10 +37,15 @@ def main():
                         '--no-rewrite-rule-ids', '--jobs=2', '--timeout=10', '--max-memory=2000',
                         '--json-output=/out/raw.json', '/src']
             else:
+                # Trivy's database exceeds 1 GB. Keep its disposable cache on runner
+                # disk, not the memory-backed /tmp mount. Never share it across runs.
+                (root / 'cache').mkdir()
+                (root / 'cache').chmod(0o777)
+                cmd += ['-v', f'{root / "cache"}:/cache:rw']
                 # Trivy needs outbound access for public vulnerability/IaC databases.
                 cmd += [image, 'filesystem', '--config=/policy/trivy/config.yaml',
                         '--ignorefile=/policy/trivy/empty.ignore',
-                        '--secret-config=/policy/trivy/secret.yaml', '--cache-dir=/tmp/trivy',
+                        '--secret-config=/policy/trivy/secret.yaml', '--cache-dir=/cache',
                         '--scanners=vuln,secret,misconfig', '--skip-dirs=/src/.git',
                         '--disable-telemetry', '--skip-version-check', '--offline-scan',
                         '--timeout=10m', '--format=json', '--output=/out/raw.json', '/src']

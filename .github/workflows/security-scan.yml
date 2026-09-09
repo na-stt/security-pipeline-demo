@@ -2,7 +2,7 @@ name: Security scan
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
 
 permissions:
   contents: read
@@ -13,6 +13,7 @@ concurrency:
 
 jobs:
   scan:
+    if: github.event.pull_request.draft == false
     name: ${{ matrix.engine }}
     # Later: JSON runner labels for an EPHEMERAL, isolated runner group.
     runs-on: ${{ fromJSON(vars.SECURITY_SCAN_RUNNER || '"ubuntu-24.04"') }}

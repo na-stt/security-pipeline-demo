@@ -3,11 +3,15 @@ on:
   push:
     branches: [master]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+concurrency:
+  group: demo-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   regression:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: Demo regression tests
     runs-on: ubuntu-24.04
     timeout-minutes: 5
