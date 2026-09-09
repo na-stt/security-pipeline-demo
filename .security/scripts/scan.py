@@ -1,6 +1,7 @@
 """Run an OSS scanner in a disposable, credential-free Docker container."""
 import argparse
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -25,9 +26,12 @@ def main():
             (root / 'output').chmod(0o777)
             image = json.loads((POLICY / 'versions.json').read_text())[args.engine]
             subprocess.run(['docker', 'pull', image], check=True, stdout=subprocess.DEVNULL)
+            # Match a non-root host user so private scanner cache directories can
+            # be cleaned up afterward. Root callers retain the nobody identity.
+            uid, gid = (os.getuid(), os.getgid()) if os.getuid() else (65534, 65534)
             cmd = ['docker', 'run', '--rm', '--cap-drop=ALL', '--security-opt=no-new-privileges',
                    '--pids-limit=256', '--memory=4g', '--cpus=2', '--read-only',
-                   '--tmpfs=/tmp:rw,noexec,nosuid,size=1g', '--user=65534:65534',
+                   '--tmpfs=/tmp:rw,noexec,nosuid,size=1g', f'--user={uid}:{gid}',
                    '-e', 'HOME=/tmp', '-v', f'{root / "source"}:/src:ro',
                    '-v', f'{POLICY}:/policy:ro', '-v', f'{root / "output"}:/out:rw', '-w', '/tmp']
             if args.engine == 'semgrep':
