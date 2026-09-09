@@ -7,7 +7,7 @@ def escaped(value):
     value = html.escape(str(value), quote=False)
     value = re.sub(r'([\\`*_{}\[\]()#+.!|~>-])', r'\\\1', value)
     # Prevent mentions and autolinks; the report must never embed remote images or HTML.
-    return value.replace('@', '&#64;').replace(':', '&#58;')
+    return value.replace('@', '@\u200b').replace(':', ':\u200b')
 
 
 def render(data):

@@ -65,6 +65,7 @@ class GateTests(unittest.TestCase):
             data = aggregate(root)
             md = render(data)
             self.assertNotIn('@na-stt', md)
+            self.assertIn('@\u200bna', md)
             self.assertNotIn('<img', md)
             self.assertNotIn('![image]', md)
             self.assertNotIn('https://', md)
