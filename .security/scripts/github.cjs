@@ -9,7 +9,7 @@ async function current({github, context}) {
     ...repo, run_id: context.payload.workflow_run.id,
   });
   if (run.event !== 'pull_request' || run.path !== SCAN_PATH || run.status !== 'completed'
-      || !/^[a-f0-9]{40}$/.test(run.head_sha) || run.conclusion === 'cancelled') return null;
+      || !/^[a-f0-9]{40}$/.test(run.head_sha) || ['cancelled', 'skipped'].includes(run.conclusion)) return null;
   const {data: workflow} = await github.rest.actions.getWorkflow({...repo, workflow_id: 'security-scan.yml'});
   if (workflow.id !== run.workflow_id) return null;
   // GitHub's run-to-PR association is sometimes empty for forks. Use the commit API,
