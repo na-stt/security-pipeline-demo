@@ -22,7 +22,7 @@ async function current({github, context}) {
   const matches = [];
   for (const candidate of candidates.slice(0, 100)) {
     const {data: pr} = await github.rest.pulls.get({...repo, pull_number: candidate.number});
-    if (pr.state === 'open' && pr.base.repo.full_name === `${repo.owner}/${repo.repo}`
+    if (pr.state === 'open' && pr.draft === false && pr.base.repo.full_name === `${repo.owner}/${repo.repo}`
         && pr.head.sha === run.head_sha
         && pr.head.repo?.full_name === run.head_repository?.full_name) matches.push(pr);
   }
@@ -39,7 +39,7 @@ async function current({github, context}) {
 async function validate(api) {
   const match = await current(api);
   if (!match) {
-    api.core.notice('Ignoring stale, ambiguous, cancelled, or unrelated scan.');
+    api.core.notice('Ignoring draft, stale, ambiguous, cancelled, or unrelated scan.');
     return;
   }
   api.core.setOutput('pr', String(match.pr.number));
@@ -52,7 +52,7 @@ async function validate(api) {
 async function publish(api) {
   const {github, context, core} = api;
   const match = await current(api); // Recheck after the potentially long AI job.
-  if (!match) { core.notice('PR advanced or scan superseded; report is artifact-only.'); return; }
+  if (!match) { core.notice('PR is draft, advanced, or scan superseded; report is artifact-only.'); return; }
   const data = JSON.parse(fs.readFileSync('aggregate.json', 'utf8'));
   const repo = context.repo;
   const reportUrl = `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;

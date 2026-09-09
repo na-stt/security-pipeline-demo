@@ -28,7 +28,7 @@ Counts are scanner observations, not deduplicated unique vulnerabilities.
 
 ```mermaid
 flowchart LR
-  PR[PR opened or updated] --> S[Semgrep in Docker]
+  PR[PR ready or updated] --> S[Semgrep in Docker]
   PR --> T[Trivy in Docker]
   PR --> TEST[Isolated regression tests]
   S --> A[Sanitized report artifacts]
@@ -101,3 +101,12 @@ publisher rejects stale runs. `Security / summary` can remain failed due to Node
 other intentional findings; use the per-file annotations and artifacts to inspect
 the demonstrated change. DeepSec reviews changed files, not every untouched baseline
 file. Its review budget is 20 changed files/500 KB and 15 minutes.
+
+## Presenting the demo
+
+Leave demonstration PRs in draft until presentation time. Click **Ready for review**
+to launch scans, regression tests, and the eligible OpenRouter AI review. Subsequent
+commits rerun the pipeline while the PR remains ready. Returning it to draft skips
+new scanning and causes the reporter to reject draft PRs. Already sent model requests
+may finish; existing comments/checks remain as historical records. GitHub can display
+skipped workflow entries for drafts.
