@@ -29,3 +29,9 @@ test/e2e/videos/
 
 # ignore Snyk Code scanner files
 .dccache
+
+# Security demo tooling and local secrets
+.security-output/
+__pycache__/
+.env*
+!.env.example

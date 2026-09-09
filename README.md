@@ -1,162 +1,103 @@
-# NodeGoat
+# NodeGoat security pipeline demo
 
-Being lightweight, fast, and scalable, Node.js is becoming a widely adopted platform for developing web applications. This project provides an environment to learn how OWASP Top 10 security risks apply to web applications developed using Node.js and how to effectively address them.
+A public fork of [OWASP NodeGoat](https://github.com/OWASP/NodeGoat) demonstrating
+pull-request security checks with Semgrep OSS, Trivy OSS, and DeepSec through
+OpenRouter. Upstream code is licensed under Apache-2.0; see [LICENSE](LICENSE)
+and the [original project documentation](NODEGOAT.md).
 
-## Getting Started
+**This is an intentionally vulnerable training application. Use synthetic data and
+keep any running instance local. No application deployment is needed for scanning.**
+The default branch is `master`. It hardens two selected handlers only; it is not a
+secure version of NodeGoat and other intentional vulnerabilities remain.
 
-OWASP Top 10 for Node.js web applications:
+## What the demo shows
 
-### Know it!
+| Scenario | Changed file | Expected behavior |
+| --- | --- | --- |
+| Contribution parsing regression | `app/routes/contributions.js` | Semgrep flags dynamic evaluation; DeepSec investigates whether request input reaches it; the expression-rejection test fails |
+| Allocation ownership regression | `app/routes/allocations.js` | DeepSec investigates use of an attacker-selected user ID; the ownership test fails; our five Semgrep rules do not cover this authorization pattern |
+| Manual repair | Push the baseline handler back to the same PR | Regression tests recover and security scans run again on the new commit |
 
-This application bundled a tutorial page that explains the OWASP Top 10 vulnerabilities and how to fix them.
+Model findings must be reviewed. Tutorial comments and known examples make this a
+pipeline demonstration, not an unbiased benchmark of AI discovery. Trivy scans the
+full tracked snapshot and can report existing CVEs, synthetic secrets, and Dockerfile
+misconfigurations. Baseline findings may remain after the selected regression is fixed.
+Counts are scanner observations, not deduplicated unique vulnerabilities.
 
-Once the application is running, you can access the tutorial page at [http://localhost:4000/tutorial](http://localhost:4000/tutorial) (or the port you have configured).
+## Architecture
 
-### Do it!
+```mermaid
+flowchart LR
+  PR[PR opened or updated] --> S[Semgrep in Docker]
+  PR --> T[Trivy in Docker]
+  PR --> TEST[Isolated regression tests]
+  S --> A[Sanitized report artifacts]
+  T --> A
+  A --> V[Trusted workflow validates PR and run]
+  V --> D[DeepSec: changed-file pattern scan and read-only Pi review]
+  D <--> OR[OpenRouter: GPT-6 Astra, low reasoning]
+  D --> P[Separate trusted publisher]
+  A --> P
+  P --> R[PR comment, check annotations, report artifacts]
+```
 
-[A Vulnerable Node.js App for Ninjas](http://nodegoat.herokuapp.com/) to exploit, toast, and fix. You may like to [set up your own copy](#how-to-set-up-your-copy-of-nodegoat) of the app to fix and test vulnerabilities. Hint: Look for comments in the source code.
+All jobs use temporary GitHub-hosted Ubuntu runners. The scan and test jobs have
+`contents: read`, no model secrets, and no persisted checkout credentials. The
+publisher has only the additional permissions to write PR comments/checks. DeepSec
+uses trusted default-branch policy and treats the PR snapshot as untrusted data.
+It never installs the app, runs it, or changes code. Fork PRs skip credentialed AI.
 
-##### Default user accounts
+## Setup for this fork
 
-The database comes pre-populated with these user accounts created as part of the seed data -
-* Admin Account - u:`admin` p:`Admin_123`
-* User Accounts (u:`user1` p:`User1_123`), (u:`user2` p:`User2_123`)
-* New users can also be added using the sign-up page.
+1. Enable Actions for this fork. The inherited Node 10/12/14 E2E and legacy lint
+   workflows have been removed from the active workflow directory. They remain in
+   upstream history; this demo does not claim their suites are passing.
+2. Configure `security-analysis` with a selected **branch** rule for `master` only.
+   Protect `master` and require maintainer review of workflow and security-policy changes.
+3. Add **`OPENROUTER_API_KEY`** as an environment secret in `security-analysis`.
+   Use a dedicated OpenRouter key with a credit limit. Do not use a general repository
+   secret, commit the key, or put it in PR content.
+4. Set `SECURITY_DEEPSEC_MODEL=openai/gpt-6-astra`. The adapter uses reasoning `low`
+   and supplies the Pi prefix internally. A trusted additional model catalog provides
+   Astra metadata for the pinned Pi release.
+5. Keep `SECURITY_DEEPSEC_ENABLED=false` for the static pilot, then set it to `true`
+   after the environment secret is saved. Push a new commit to a demo PR to run the
+   pipeline again. Missing credentials produce an explicit AI skip, not a clean AI review.
+6. Use branches inside this fork for the AI demonstration. Open PRs against this
+   fork's `master`, never against OWASP upstream. Do not merge the vulnerable branches.
 
-## How to Set Up Your Copy of NodeGoat
+See [complete pipeline setup and local scan commands](.security/README.md),
+[scanner responsibilities and architecture](SECURITY-PIPELINE.md), and
+[future remediation design](.security/AUTOFIX.md). There is no executable autofix
+workflow yet; adding `security-autofix` currently does nothing.
 
-### OPTION 1 - Run NodeGoat on your machine
+## Run regression tests locally
 
-1) Install [Node.js](http://nodejs.org/) - NodeGoat requires Node v8 or above
+Use Node 24.18.0:
 
-2) Clone the github repository:
-   ```
-   git clone https://github.com/OWASP/NodeGoat.git
-   ```
+```sh
+node --test .demo/security-regressions.test.cjs
+```
 
-3) Go to the directory:
-   ```
-   cd NodeGoat
-   ```
+These five tests exercise the actual two route handlers with stubbed data access.
+They require no npm installation, MongoDB, or real credentials. This is targeted
+regression coverage, not the upstream full application test suite. The test harness
+uses Node's VM for dependency stubbing; it is not a security sandbox.
 
-4) Install node packages:
-   ```
-   npm install
-   ```
+To repair either demo PR, check out that PR branch, restore its affected handler from
+`origin/master`, run the tests, commit, and push. For the contribution scenario:
 
-5) Set up MongoDB. You can either install MongoDB locally or create a remote instance:
+```sh
+git fetch origin
+git restore --source origin/master -- app/routes/contributions.js
+node --test .demo/security-regressions.test.cjs
+git add app/routes/contributions.js
+git commit -m "Fix contribution parsing regression"
+git push
+```
 
-   * Using local MongoDB:
-     1) Install [MongoDB Community Server](https://docs.mongodb.com/manual/administration/install-community/)
-     2) Start [mongod](http://docs.mongodb.org/manual/reference/program/mongod/#bin.mongod)
-
-   * Using remote MongoDB instance:
-     1) [Deploy a MongoDB Atlas free tier cluster](https://docs.atlas.mongodb.com/tutorial/deploy-free-tier-cluster/) (M0 Sandbox)
-     2) [Enable network access](https://docs.atlas.mongodb.com/security/add-ip-address-to-list/) to the cluster from your current IP address
-     3) [Add a database user](https://docs.atlas.mongodb.com/tutorial/create-mongodb-user-for-cluster/) to the cluster
-     4) Set the `MONGODB_URI` environment variable to the connection string of your cluster, which can be viewed in the cluster's
-        [connect dialog](https://docs.atlas.mongodb.com/tutorial/connect-to-your-cluster/#connect-to-your-atlas-cluster). Select "Connect your application",
-        set the driver to "Node.js" and the version to "2.2.12 or later". This will give a connection string in the form:
-        ```
-        mongodb://<username>:<password>@<cluster>/<dbname>?ssl=true&replicaSet=<rsname>&authSource=admin&retryWrites=true&w=majority
-        ```
-        The `<username>` and `<password>` fields need filling in with the details of the database user added earlier. The `<dbname>` field sets the name of the
-        database nodegoat will use in the cluster (eg "nodegoat"). The other fields will already be filled in with the correct details for your cluster.
-
-6) Populate MongoDB with the seed data required for the app:
-   ```
-   npm run db:seed
-   ```
-   By default this will use the "development" configuration, but the desired config can be passed as an argument if required.
-
-7) Start the server. You can run the server using node or nodemon:
-   * Start the server with node. This starts the NodeGoat application at [http://localhost:4000/](http://localhost:4000/):
-     ```
-     npm start
-     ```
-   * Start the server with nodemon, which will automatically restart the application when you make any changes. This starts the NodeGoat application at [http://localhost:5000/](http://localhost:5000/):
-     ```
-     npm run dev
-     ```
-
-#### Customizing the Default Application Configuration
-
-By default the application will be hosted on port 4000 and will connect to a MongoDB instance at localhost:27017. To change this set the environment variables `PORT` and `MONGODB_URI`.
-
-Other settings can be changed by updating the [config file](https://github.com/OWASP/NodeGoat/blob/master/config/env/all.js).
-
-### OPTION 2 - Run NodeGoat on Docker
-
-The repo includes the Dockerfile and docker-compose.yml necessary to set up the app and db instance, then connect them together.
-
-1) Install [docker](https://docs.docker.com/installation/) and [docker compose](https://docs.docker.com/compose/install/) 
-
-2) Clone the github repository:
-   ```
-   git clone https://github.com/OWASP/NodeGoat.git
-   ```
-
-3) Go to the directory:
-   ```
-   cd NodeGoat
-   ```
-
-4) Build the images:
-   ```
-   docker-compose build
-   ```
-
-5) Run the app, this starts the NodeGoat application at http://localhost:4000/:
-   ```
-   docker-compose up
-   ```
-
-### OPTION 3 - Deploy to Heroku
-
-This option uses a free ($0/month) Heroku node server.
-
-Though not essential, it is recommended that you fork this repository and deploy the forked repo.
-This will allow you to fix vulnerabilities in your own forked version, then deploy and test it on Heroku.
-
-1) Set up a publicly accessible MongoDB instance:
-   1) [Deploy a MongoDB Atlas free tier cluster](https://docs.atlas.mongodb.com/tutorial/deploy-free-tier-cluster/) (M0 Sandbox)
-   2) [Enable network access](https://docs.atlas.mongodb.com/security/ip-access-list/#add-ip-access-list-entries) to the cluster from anywhere (CIDR range 0.0.0.0/0)
-   3) [Add a database user](https://docs.atlas.mongodb.com/tutorial/create-mongodb-user-for-cluster/) to the cluster
-
-2) Deploy NodeGoat to Heroku by clicking the button below:
-
-   [![Deploy](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
-
-   In the Create New App dialog, set the `MONGODB_URI` config var to the connection string of your MongoDB Atlas cluster.
-   This can be viewed in the cluster's [connect dialog](https://docs.atlas.mongodb.com/tutorial/connect-to-your-cluster/#connect-to-your-atlas-cluster).
-   Select "Connect your application", set the driver to "Node.js" and the version to "2.2.12 or later".
-   This will give a connection string in the form:
-   ```
-   mongodb://<username>:<password>@<cluster>/<dbname>?ssl=true&replicaSet=<rsname>&authSource=admin&retryWrites=true&w=majority
-   ```
-   The `<username>` and `<password>` fields need filling in with the details of the database user added earlier. The `<dbname>` field sets the name of the
-   database nodegoat will use in the cluster (eg "nodegoat"). The other fields will already be filled in with the correct details for your cluster.
-
-## Report bugs, Feedback, Comments
-
-*  Open a new [issue](https://github.com/OWASP/NodeGoat/issues) or contact team by joining chat at [Slack](https://owasp.slack.com/messages/project-nodegoat/) or [![Join the chat at https://gitter.im/OWASP/NodeGoat](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/OWASP/NodeGoat?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-
-## Contributing
-
-Please Follow [the contributing guide](CONTRIBUTING.md)
-
-## Code Of Conduct (CoC)
-
-This project is bound by a [Code of Conduct](CODE_OF_CONDUCT.md).
-
-## Contributors
-
-Here are the amazing [contributors](https://github.com/OWASP/NodeGoat/graphs/contributors) to the NodeGoat project.
-
-## Supports
-
-- Thanks to JetBrains for providing licenses to fantastic [WebStorm IDE](https://www.jetbrains.com/webstorm/) to build this project.
-
-## License
-
-Code licensed under the [Apache License v2.0.](http://www.apache.org/licenses/LICENSE-2.0)
+Check both the latest PR commit and the security comment's referenced commit. The
+publisher rejects stale runs. `Security / summary` can remain failed due to NodeGoat's
+other intentional findings; use the per-file annotations and artifacts to inspect
+the demonstrated change. DeepSec reviews changed files, not every untouched baseline
+file. Its review budget is 20 changed files/500 KB and 15 minutes.
