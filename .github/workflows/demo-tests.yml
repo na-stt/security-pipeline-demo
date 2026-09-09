@@ -23,3 +23,7 @@ jobs:
         with:
           node-version: '24.18.0'
       - run: node --test .demo/security-regressions.test.cjs
+      - name: Test security gate and report boundaries
+        run: |
+          python3 -m unittest discover -s .security/tests -p 'test_*.py'
+          node --test .security/tests/github.test.cjs
