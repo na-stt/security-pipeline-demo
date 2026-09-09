@@ -33,6 +33,14 @@ jobs:
                   print('Frames:', [(f.name, f.lineno) for f in traceback.extract_tb(error.__traceback__)])
                   raise
           scan.reports.trivy = diagnose_normalization
+          cleanup = tempfile.TemporaryDirectory.cleanup
+          def diagnose_cleanup(self):
+              try: return cleanup(self)
+              except Exception as error:
+                  print('Cleanup exception:', type(error).__name__)
+                  print('Cleanup frames:', [(f.name, f.lineno) for f in traceback.extract_tb(error.__traceback__)])
+                  raise
+          tempfile.TemporaryDirectory.cleanup = diagnose_cleanup
           original = subprocess.run
           read_text = Path.read_text
           def inspect_read(self, *args, **kwargs):
