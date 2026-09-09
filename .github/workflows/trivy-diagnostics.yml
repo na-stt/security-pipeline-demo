@@ -16,10 +16,23 @@ jobs:
       - name: Diagnose without raw log publication
         run: |
           python3 - <<'PYTHON'
-          import sys, subprocess, tempfile, os
+          import sys, subprocess, tempfile, os, traceback, json
           from pathlib import Path
           sys.path.insert(0, '.security/scripts')
           import scan
+          normalize = scan.reports.trivy
+          def diagnose_normalization(data):
+              print('Result count:', len(data.get('Results', [])))
+              for result in data.get('Results', []):
+                  try: scan.reports.safe_path(result['Target'])
+                  except Exception:
+                      print('Rejected target:', json.dumps(str(result.get('Target'))[:160]))
+              try: return normalize(data)
+              except Exception as error:
+                  print('Normalize exception:', type(error).__name__)
+                  print('Frames:', [(f.name, f.lineno) for f in traceback.extract_tb(error.__traceback__)])
+                  raise
+          scan.reports.trivy = diagnose_normalization
           original = subprocess.run
           read_text = Path.read_text
           def inspect_read(self, *args, **kwargs):
