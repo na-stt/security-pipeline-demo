@@ -52,3 +52,8 @@ test('fails closed if draft status is missing', async () => {
   const {api, pr} = fixture(); delete pr.draft;
   assert.equal(await current(api), null);
 });
+
+test('refuses skipped scans even if the PR has since become ready', async () => {
+  const {api, run} = fixture(); run.conclusion = 'skipped';
+  assert.equal(await current(api), null);
+});
