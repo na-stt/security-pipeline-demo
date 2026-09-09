@@ -16,10 +16,22 @@ jobs:
       - name: Diagnose without raw log publication
         run: |
           python3 - <<'PYTHON'
-          import sys, subprocess, tempfile
+          import sys, subprocess, tempfile, os
+          from pathlib import Path
           sys.path.insert(0, '.security/scripts')
           import scan
           original = subprocess.run
+          read_text = Path.read_text
+          def inspect_read(self, *args, **kwargs):
+              if self.name == 'raw.json':
+                  st = self.stat()
+                  print('Raw report mode/owner/reader:', oct(st.st_mode & 0o777), st.st_uid, os.getuid())
+              try:
+                  return read_text(self, *args, **kwargs)
+              except Exception as error:
+                  print('Read exception class:', type(error).__name__)
+                  raise
+          Path.read_text = inspect_read
           with tempfile.TemporaryFile() as log:
               def run(cmd, **kwargs):
                   if cmd[:2] == ['docker', 'run']:
