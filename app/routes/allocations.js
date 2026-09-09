@@ -9,7 +9,7 @@ function AllocationsHandler(db) {
     const allocationsDAO = new AllocationsDAO(db);
 
     this.displayAllocations = (req, res, next) => {
-        const userId = req.session && req.session.userId;
+        const userId = req.params.userId;
         if (!userId) return res.status(401).send("Authentication required");
         const {
             threshold
