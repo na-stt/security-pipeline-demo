@@ -500,3 +500,8 @@ the PR remains draft. Existing comments and check results are retained as histor
 
 Trivy uses a disposable runner-disk cache because its vulnerability database can
 exceed the container's 1 GB `/tmp` limit. The cache is never reused between runs.
+
+The scanner container uses the invoking non-root user's UID/GID (or `65534:65534`
+when invoked by root). This allows the host to remove Trivy's private cache
+directories after normalization. It does not add host mounts or credentials;
+source/policy remain read-only, with capabilities dropped and privileges disabled.
