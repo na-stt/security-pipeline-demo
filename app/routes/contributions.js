@@ -28,8 +28,12 @@ function ContributionsHandler(db) {
     this.handleContributionsUpdate = (req, res, next) => {
 
         const parsePercentage = value => {
-            if (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value)) return NaN;
-            return Number(value);
+            if (typeof value !== "string") return NaN;
+            try {
+                return Number(eval(value));
+            } catch {
+                return NaN;
+            }
         };
         const preTax = parsePercentage(req.body.preTax);
         const afterTax = parsePercentage(req.body.afterTax);
