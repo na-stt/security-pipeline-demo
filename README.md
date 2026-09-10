@@ -1,137 +1,54 @@
-# NodeGoat security pipeline demo
+# Focused security scanner demo
 
-A public fork of [OWASP NodeGoat](https://github.com/OWASP/NodeGoat) demonstrating
-pull-request security checks with Semgrep OSS, Trivy OSS, and DeepSec through
-OpenRouter. Upstream code is licensed under Apache-2.0; see [LICENSE](LICENSE)
-and the [original project documentation](NODEGOAT.md).
+This NodeGoat-derived training fork demonstrates two deliberately introduced bugs:
 
-**This is an intentionally vulnerable training application. Use synthetic data and
-keep any running instance local. No application deployment is needed for scanning.**
-The default branch is `master`. It hardens two selected handlers only; it is not a
-secure version of NodeGoat and other intentional vulnerabilities remain.
+- Contribution evaluation: request fields reach server-side `eval`. Semgrep and
+  DeepSec provide complementary evidence about code execution.
+- Allocation ownership: a route selects the owner from the URL instead of the
+  authenticated session. DeepSec reviews the missing authorization check.
 
-## What the demo shows
+The default branch contains the corrected implementations. Demo PRs reintroduce
+one bug each and must stay unmerged. The GitHub App runs all three scanners and
+publishes one `Security / gate` and one updated comment linking to its report in
+GitHub. Regression tests are a separate required check. A medium/advisory ownership
+finding does not alone fail the current security gate; its regression test fails.
 
-| Scenario | Changed file | Expected behavior |
-| --- | --- | --- |
-| Contribution parsing regression | `app/routes/contributions.js` | Semgrep flags dynamic evaluation; DeepSec investigates whether request input reaches it; the expression-rejection test fails |
-| Allocation ownership regression | `app/routes/allocations.js` | DeepSec investigates use of an attacker-selected user ID; the ownership test fails; our five Semgrep rules do not cover this authorization pattern |
-| Manual repair | Push the baseline handler back to the same PR | Regression tests recover and security scans run again on the new commit |
+## Run the focused application locally
 
-Model findings must be reviewed. Tutorial comments and known examples make this a
-pipeline demonstration, not an unbiased benchmark of AI discovery. Trivy scans the
-full tracked snapshot and can report existing CVEs, synthetic secrets, and Dockerfile
-misconfigurations. Baseline findings may remain after the selected regression is fixed.
-Counts are scanner observations, not deduplicated unique vulnerabilities.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  PR[PR ready or updated] --> S[Semgrep in Docker]
-  PR --> T[Trivy in Docker]
-  PR --> TEST[Isolated regression tests]
-  PR --> STATUS[Trusted status workflow: pending checks]
-  STATUS --> GATE[Security / gate: required before merge]
-  S --> A[Sanitized report artifacts]
-  T --> A
-  A --> V[Trusted workflow validates PR and run]
-  V --> D[DeepSec: changed-file pattern scan and read-only Pi review]
-  D <--> OR[OpenRouter: GPT-6 Astra, low reasoning]
-  D --> P[Separate trusted publisher]
-  A --> P
-  P --> R[Readable PR report, annotations, Markdown and JSON artifacts]
-  P --> GATE
-```
-
-All jobs use temporary GitHub-hosted Ubuntu runners. The scan and test jobs have
-`contents: read`, no model secrets, and no persisted checkout credentials. The
-trusted status/context jobs can write checks; the publisher can also write PR comments. DeepSec
-uses trusted default-branch policy and treats the PR snapshot as untrusted data.
-It never installs the app, runs it, or changes code. Fork PRs skip credentialed AI.
-
-## Setup for this fork
-
-1. Enable Actions for this fork. The inherited Node 10/12/14 E2E and legacy lint
-   workflows have been removed from the active workflow directory. They remain in
-   upstream history; this demo does not claim their suites are passing.
-2. Configure `security-analysis` with a selected **branch** rule for `master` only.
-   Protect `master` and require maintainer review of workflow and security-policy changes.
-3. Add **`OPENROUTER_API_KEY`** as an environment secret in `security-analysis`.
-   Use a dedicated OpenRouter key with a credit limit. Do not use a general repository
-   secret, commit the key, or put it in PR content.
-4. Set `SECURITY_DEEPSEC_MODEL=openai/gpt-6-astra`. The adapter uses reasoning `low`
-   and supplies the Pi prefix internally. A trusted additional model catalog provides
-   Astra metadata for the pinned Pi release.
-5. Keep `SECURITY_DEEPSEC_ENABLED=false` for the static pilot, then set it to `true`
-   after the environment secret is saved. Push a new commit to a demo PR to run the
-   pipeline again. Missing credentials produce an explicit AI skip, not a clean AI review.
-6. Require **Security / gate** from **GitHub Actions** alongside **Demo regression tests**,
-   preserving strict up-to-date branches, code-owner reviews, and administrator enforcement.
-   See [gate setup and JSON/Markdown contract](.security/GATE.md). Missing, skipped, failed,
-   or partial required scans block. Forks keep their AI skip and cannot pass the strict gate.
-7. Use branches inside this fork for the AI demonstration. Open PRs against this
-   fork's `master`, never against OWASP upstream. Do not merge the vulnerable branches.
-
-See [complete pipeline setup and local scan commands](.security/README.md),
-[scanner responsibilities and architecture](SECURITY-PIPELINE.md), and
-[future remediation design](.security/AUTOFIX.md). There is no executable autofix
-workflow yet; adding `security-autofix` currently does nothing.
-
-## Reading the security report
-
-Look for **Security / gate** and the individual **Security / Semgrep**, **Security / Trivy**,
-and **Security / DeepSec** checks. They remain pending while results are collected.
-The native scanner jobs show execution success; the Security checks apply findings policy.
-
-The bot updates one PR comment with the exact head SHA, scanner coverage, blocking/advisory
-counts, and each finding's ID, file/line, severity, confidence, evidence, and suggested fix.
-The artifact link provides `security-report.md` for reading and `security-report.json` for
-structured automation. Long comments are shortened; complete reports remain in artifacts
-for seven days. Findings are scanner observations; overlap and unknown baseline status
-are preserved. An AI agent must independently verify findings before attempting a repair.
-
-Potential secrets and HIGH/CRITICAL code findings with high confidence block. Dependency
-CVEs and misconfigurations are advisory initially. Existing NodeGoat findings can keep the
-gate red after the demonstrated regression is repaired. This is deliberate; there is no
-automatic waiver and no automatic code modification.
-
-## Run regression tests locally
-
-Use Node 24.18.0:
+Requires Node 24+ and Docker Compose for MongoDB:
 
 ```sh
-node --test .demo/security-regressions.test.cjs
+npm ci --ignore-scripts
+npm test
+docker compose up -d mongo
+# Optional, idempotent schema initialization (also performed on startup):
+docker compose run --rm --build web npm run db:seed
+docker compose up -d --build web
 ```
 
-These five tests exercise the actual two route handlers with stubbed data access.
-They require no npm installation, MongoDB, or real credentials. This is targeted
-regression coverage, not the upstream full application test suite. The test harness
-uses Node's VM for dependency stubbing; it is not a security sandbox.
+Open http://localhost:4000 and create a demo account. The web port binds only to
+localhost. No accounts or known passwords are seeded; use no real data.
+A random session key is generated at startup; optionally provide SESSION_SECRET
+when starting Node directly. Do not publish this training application.
 
-To repair either demo PR, check out that PR branch, restore its affected handler from
-`origin/master`, run the tests, commit, and push. For the contribution scenario:
+## Baseline cleanup
 
-```sh
-git fetch origin
-git restore --source origin/master -- app/routes/contributions.js
-node --test .demo/security-regressions.test.cjs
-git add app/routes/contributions.js
-git commit -m "Fix contribution parsing regression"
-git push
-```
+Runtime packages are pinned and the lockfile regenerated. The old development
+pipeline and duplicated scanner dependencies have been removed: scanner policy
+now belongs to the installed App's repository. This preserves the separate
+required regression check and does not replace or disable the App gate.
 
-Check both the latest PR commit and the security comment's referenced commit. The
-publisher rejects stale runs. `Security / gate` can remain failed due to NodeGoat's
-other intentional findings; use the per-file annotations and artifacts to inspect
-the demonstrated change. DeepSec reviews changed files, not every untouched baseline
-file. Its review budget is 20 changed files/500 KB and 15 minutes.
+The focused runtime mounts login/signup, contributions, and allocations only.
+Other original NodeGoat lessons remain as reference source, not active routes.
+Nunjucks replaces Swig with automatic HTML escaping; CSRF validation and session
+regeneration protect the active forms. Passwords use bounded asynchronous scrypt; authentication is rate limited. Sessions have TTL eviction and a hard capacity bound. Allocation thresholds
+are validated and queried using MongoDB operators rather than JavaScript `$where`.
+The obsolete checked-in training TLS private key is removed from the current tree;
+its historical copies remain and must never be trusted as a real credential.
 
-## Presenting the demo
+The full upstream lesson catalog and old Grunt/Cypress commands no longer describe
+this focused runtime. This is a scanner demo, not a production security guarantee.
 
-Leave demonstration PRs in draft until presentation time. Click **Ready for review**
-to launch scans, regression tests, and the eligible OpenRouter AI review. Subsequent
-commits rerun the pipeline while the PR remains ready. Returning it to draft skips
-new scanning and causes the reporter to reject draft PRs. Already sent model requests
-may finish; existing comments/checks remain as historical records. GitHub can display
-skipped workflow entries for drafts.
+## Attribution
+
+Derived from OWASP NodeGoat, licensed under Apache-2.0; see LICENSE.
