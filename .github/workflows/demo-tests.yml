@@ -22,5 +22,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.18.0'
-      - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm test
+      - run: node --test .demo/security-regressions.test.cjs
+      - name: Test security gate and report boundaries
+        run: |
+          python3 -m unittest discover -s .security/tests -p 'test_*.py'
+          node --test .security/tests/github.test.cjs

@@ -1,0 +1,175 @@
+name: Security report
+
+on:
+  workflow_run:
+    workflows: [Security scan]
+    types: [completed]
+
+# This workflow and all executable policy come from the default branch.
+permissions: {}
+
+concurrency:
+  group: security-report-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  context:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      checks: write
+    outputs:
+      pr: ${{ steps.validate.outputs.pr }}
+      head: ${{ steps.validate.outputs.head }}
+      base: ${{ steps.validate.outputs.base }}
+      same_repo: ${{ steps.validate.outputs.same_repo }}
+      attempt: ${{ steps.validate.outputs.attempt }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - id: validate
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const policy = require('./.security/scripts/github.cjs');
+            await policy.validate({github, context, core});
+
+  deepsec:
+    needs: context
+    if: needs.context.outputs.pr != ''
+    runs-on: ${{ fromJSON(vars.SECURITY_AI_RUNNER || '"ubuntu-24.04"') }}
+    timeout-minutes: 25
+    # Configure this environment to allow ONLY the protected default branch.
+    # Store OPENROUTER_API_KEY here, never as a general repository secret.
+    environment: security-analysis
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted default-branch policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          path: policy
+          persist-credentials: false
+      - name: Record explicit AI skip unless enabled
+        run: |
+          mkdir -p reports
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          Path('reports/deepsec.json').write_text(json.dumps({
+            'schema': 1, 'engine': 'deepsec', 'status': 'skipped', 'findings': [],
+            'reason': 'Fork PR, AI disabled, or model not configured', 'coverage': {}}))
+          PY
+      - name: Checkout same-repository PR head as data
+        if: needs.context.outputs.same_repo == 'true' && vars.SECURITY_DEEPSEC_ENABLED == 'true' && vars.SECURITY_DEEPSEC_MODEL != ''
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.context.outputs.head }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Set up Node for trusted scanner dependencies
+        if: needs.context.outputs.same_repo == 'true' && vars.SECURITY_DEEPSEC_ENABLED == 'true' && vars.SECURITY_DEEPSEC_MODEL != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
+      - name: Install locked scanner, never PR dependencies
+        if: needs.context.outputs.same_repo == 'true' && vars.SECURITY_DEEPSEC_ENABLED == 'true' && vars.SECURITY_DEEPSEC_MODEL != ''
+        run: npm ci --prefix policy/.security/deepsec --ignore-scripts --no-audit --no-fund
+      - name: Review changed files with root-confined read tools
+        if: needs.context.outputs.same_repo == 'true' && vars.SECURITY_DEEPSEC_ENABLED == 'true' && vars.SECURITY_DEEPSEC_MODEL != ''
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          BASE_SHA: ${{ needs.context.outputs.base }}
+          MODEL: ${{ vars.SECURITY_DEEPSEC_MODEL }}
+        run: python3 policy/.security/scripts/deepsec.py --source source --base "$BASE_SHA" --out reports --model "$MODEL"
+      - name: Mark setup failures as incomplete coverage
+        if: failure()
+        run: |
+          mkdir -p reports
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('reports/deepsec.json')
+          data = json.loads(path.read_text()) if path.exists() else {'schema': 1, 'engine': 'deepsec', 'findings': []}
+          data.update(status='error', reason='DeepSec setup or analysis failed')
+          path.write_text(json.dumps(data))
+          PY
+      - name: Preserve AI findings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: security-deepsec-${{ github.run_attempt }}
+          path: reports/deepsec.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    needs: [context, deepsec]
+    if: always() && needs.context.outputs.pr != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+      checks: write
+    steps:
+      - name: Checkout trusted reporting code only
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Download Semgrep report from exact scan attempt
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: security-semgrep-${{ needs.context.outputs.attempt }}
+          path: reports
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Download Trivy report from exact scan attempt
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: security-trivy-${{ needs.context.outputs.attempt }}
+          path: reports
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Download AI report
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: security-deepsec-${{ github.run_attempt }}
+          path: reports
+      - name: Bind report to GitHub-validated commit and run
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          REVIEW_BASE_SHA: ${{ needs.context.outputs.base }}
+          SECURITY_MODEL: ${{ vars.SECURITY_DEEPSEC_MODEL }}
+        with:
+          script: |
+            const policy = require('./.security/scripts/github.cjs');
+            await policy.writeContext({github, context, core});
+      - name: Validate data and aggregate
+        run: python3 .security/scripts/aggregate.py --reports reports --context report-context.json --out security-report.json --markdown security-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish bounded summary and annotations
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const policy = require('./.security/scripts/github.cjs');
+            await policy.publish({github, context, core});
+      - name: Preserve validated aggregate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: security-summary-${{ github.event.workflow_run.id }}-${{ github.run_attempt }}
+          path: |
+            security-report.json
+            security-report.md
+          retention-days: 7

@@ -34,10 +34,13 @@ when starting Node directly. Do not publish this training application.
 
 ## Baseline cleanup
 
-Runtime packages are pinned and the application lockfile regenerated. The old
-development pipeline has been replaced. The existing `.security/` files are
-preserved unchanged in this PR; the active scanner policy belongs to the installed
-App's repository. The separate required regression check and App gate remain.
+Runtime packages are pinned and the application lockfile regenerated. Existing
+`.security/` files and `.github/workflows/` are preserved unchanged in this PR.
+The active scanner policy belongs to the installed App's repository. The three
+retired security workflows remain disabled in GitHub settings. The separate
+required regression check and App gate remain. Run `npm test` locally for the
+full application test suite; the unchanged regression workflow runs its original
+route tests and security tooling tests.
 
 The focused runtime mounts login/signup, contributions, and allocations only.
 Other original NodeGoat lessons remain as reference source, not active routes.
