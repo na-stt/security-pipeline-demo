@@ -24,11 +24,13 @@ function createApp(database) {
   app.use(session({store:new BoundedSessionStore(),secret:process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
     resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'strict',maxAge:3600000}}));
   app.use((req,res,next)=>{
-    req.session.csrf ||= randomBytes(32).toString('hex');
+    if (req.session.userId || (req.method==='GET' && ['/login','/signup'].includes(req.path))) {
+      req.session.csrf ||= randomBytes(32).toString('hex');
+    }
     res.locals.csrftoken=req.session.csrf;
     if (!['GET','HEAD','OPTIONS'].includes(req.method)) {
       const supplied=req.body?._csrf;
-      if (typeof supplied!=='string' || Buffer.byteLength(supplied)!==64 || !timingSafeEqual(Buffer.from(supplied),Buffer.from(req.session.csrf)))
+      if (typeof req.session.csrf!=='string' || typeof supplied!=='string' || Buffer.byteLength(supplied)!==64 || !timingSafeEqual(Buffer.from(supplied),Buffer.from(req.session.csrf)))
         return res.status(403).send('Invalid CSRF token');
     }
     next();

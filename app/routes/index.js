@@ -7,7 +7,7 @@ const AllocationsHandler=require('./allocations');
 module.exports=(app,db)=>{
   const sessions=new SessionHandler(db), contributions=new ContributionsHandler(db), allocations=new AllocationsHandler(db);
   const authenticated=sessions.isLoggedInMiddleware;
-  app.get('/',sessions.displayLoginPage);
+  app.get('/',(req,res)=>res.redirect('/login'));
   app.get('/login',sessions.displayLoginPage);
   app.post('/login',sessions.handleLoginRequest);
   app.get('/signup',sessions.displaySignupPage);
