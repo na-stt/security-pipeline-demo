@@ -78,7 +78,7 @@ class PipelineTests(unittest.TestCase):
         self.assertNotIn('do-not-publish-me', json.dumps(result))
         self.assertEqual(result['findings'][0]['category'], 'secret')
 
-    def test_failure_is_not_clean_and_skip_is_neutral(self):
+    def test_failure_and_skip_never_pass(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             self.assertEqual(aggregate(directory)['conclusion'], 'failure')
@@ -86,7 +86,7 @@ class PipelineTests(unittest.TestCase):
                 reports.save(directory / f'{engine}.json', reports.report(engine))
             self.assertEqual(aggregate(directory)['conclusion'], 'success')
             reports.save(directory / 'deepsec.json', reports.report('deepsec', 'skipped'))
-            self.assertEqual(aggregate(directory)['conclusion'], 'neutral')
+            self.assertEqual(aggregate(directory)['conclusion'], 'failure')
 
     def test_confidence_and_dependency_policy(self):
         f = reports.finding('semgrep', 'vulnerability', 'test', 'app.py', 'HIGH', 'medium')

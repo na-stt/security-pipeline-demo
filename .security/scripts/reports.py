@@ -1,5 +1,6 @@
 """Small, bounded report contract shared by scanners and the trusted publisher."""
 import json
+import re
 from pathlib import Path
 
 MAX_REPORT_BYTES = 8 * 1024 * 1024
@@ -11,7 +12,10 @@ SEVERITIES = ('CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO', 'UNKNOWN')
 
 
 def clean(value, limit=240):
-    return ''.join(c for c in str(value) if c.isprintable())[:limit]
+    value = ''.join(c for c in str(value) if c.isprintable())
+    # Defense in depth for descriptions that accidentally echo common credential formats.
+    value = re.sub(r'(?i)\b(?:sk-(?:or-v1-)?[a-z0-9_-]{16,}|gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,}|AKIA[A-Z0-9]{16})\b', '[REDACTED]', value)
+    return value[:limit]
 
 
 def safe_path(value):
@@ -32,6 +36,9 @@ def finding(engine, category, rule, path, severity, confidence='unknown', line=1
     confidence = str(confidence).lower()
     if confidence not in ('high', 'medium', 'low', 'unknown'):
         confidence = 'unknown'
+    if category == 'secret':
+        title, detail, recommendation = ('Potential exposed secret', '',
+            'Verify without posting the value; revoke/rotate if confirmed.')
     return dict(engine=engine, category=category, rule=clean(rule, 160), path=safe_path(path),
                 severity=severity, confidence=confidence,
                 line=max(1, min(int(line or 1), 1000000)), title=clean(title),
@@ -69,7 +76,12 @@ def load(path, engine):
         findings.append(finding(**{k: f[k] for k in (
             'engine', 'category', 'rule', 'path', 'severity', 'confidence', 'line',
             'title', 'detail', 'recommendation')}))
-    return report(engine, data['status'], findings, data.get('reason', ''))
+    coverage = data.get('coverage', {})
+    if not isinstance(coverage, dict):
+        raise ValueError('invalid coverage')
+    coverage = {clean(k, 80): v for k, v in list(coverage.items())[:20]
+                if isinstance(v, (int, bool)) and abs(v) <= 1000000000}
+    return report(engine, data['status'], findings, data.get('reason', ''), coverage)
 
 
 def semgrep(data):
