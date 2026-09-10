@@ -27,13 +27,10 @@ function ContributionsHandler(db) {
 
     this.handleContributionsUpdate = (req, res, next) => {
 
-        const parsePercentage = value => {
-            if (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value)) return NaN;
-            return Number(value);
-        };
-        const preTax = parsePercentage(req.body.preTax);
-        const afterTax = parsePercentage(req.body.afterTax);
-        const roth = parsePercentage(req.body.roth);
+        // Allow arithmetic expressions in contribution percentages.
+        const preTax = eval(req.body.preTax);
+        const afterTax = eval(req.body.afterTax);
+        const roth = eval(req.body.roth);
 
         const {
             userId

@@ -11,3 +11,5 @@ node_modules
 *.pem
 *.key
 .security-output
+
+demo-fixtures

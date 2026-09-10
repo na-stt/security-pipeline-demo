@@ -1,0 +1,7 @@
+{
+  "name": "intentional-trivy-dependency-demo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Non-executed scanner fixture; never install or import in the demo application",
+  "dependencies": {"minimist": "1.2.5"}
+}
