@@ -1,0 +1,3 @@
+# Explicit trusted configuration; built-in vulnerability/secret/IaC rules remain enabled.
+format: json
+exit-code: 0

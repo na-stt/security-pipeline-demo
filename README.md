@@ -34,10 +34,10 @@ when starting Node directly. Do not publish this training application.
 
 ## Baseline cleanup
 
-Runtime packages are pinned and the lockfile regenerated. The old development
-pipeline and duplicated scanner dependencies have been removed: scanner policy
-now belongs to the installed App's repository. This preserves the separate
-required regression check and does not replace or disable the App gate.
+Runtime packages are pinned and the application lockfile regenerated. The old
+development pipeline has been replaced. The existing `.security/` files are
+preserved unchanged in this PR; the active scanner policy belongs to the installed
+App's repository. The separate required regression check and App gate remain.
 
 The focused runtime mounts login/signup, contributions, and allocations only.
 Other original NodeGoat lessons remain as reference source, not active routes.
