@@ -19,7 +19,8 @@ function AllocationsHandler(db) {
             (typeof threshold !== 'string' || !/^\d{1,2}(?:\.\d+)?$/.test(threshold) || Number(threshold) > 99)) {
             return res.status(400).send('Invalid allocation threshold');
         }
-        allocationsDAO.getByUserIdAndThreshold(userId, threshold, (err, allocations) => {
+        const selectedUserId = req.params.userId || userId;
+        allocationsDAO.getByUserIdAndThreshold(selectedUserId, threshold, (err, allocations) => {
             if (err) return next(err);
             return res.render("allocations", {
                 userId,
