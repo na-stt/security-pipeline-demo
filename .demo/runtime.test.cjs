@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {createApp}=require('../server');
 const {callbacks}=require('../app/data/database');
-const bcrypt=require('bcryptjs');
+const passwords=require('../app/data/passwords');
 
 test('current MongoDB driver adapter preserves query, replacement and insert results',async()=>{
   const seen=[];
@@ -20,7 +20,7 @@ test('current MongoDB driver adapter preserves query, replacement and insert res
 });
 
 test('login, CSRF, escaped allocation view and disabled unrelated lessons',async t=>{
-  const user={_id:1,userName:'demo',password:bcrypt.hashSync('fixture-password',4),firstName:'<script>alert(1)</script>',lastName:'Test'};
+  const user={_id:1,userName:'demo',password:await passwords.hash('fixture-password'),firstName:'<script>alert(1)</script>',lastName:'Test'};
   const db={collection(name){return {
     findOne(query,cb){cb(null,user);},
     find(query){return {toArray(cb){cb(null,[{userId:1,stocks:20,funds:30,bonds:50}]);}};}
@@ -44,4 +44,24 @@ test('login, CSRF, escaped allocation view and disabled unrelated lessons',async
   const invalid=await fetch(url+'/allocations/1?threshold=1%27%3Breturn%20true',{headers:{Cookie:authCookie}});
   assert.equal(invalid.status,400);
   assert.equal((await fetch(url+'/research',{headers:{Cookie:authCookie}})).status,404);
+});
+
+test('passwords are salted and asynchronous; incorrect passwords are rejected',async()=>{
+  const [a,b]=await Promise.all([passwords.hash('long demo password'),passwords.hash('long demo password')]);
+  assert.notEqual(a,b);
+  assert.equal(await passwords.verify('long demo password',a),true);
+  assert.equal(await passwords.verify('wrong password',a),false);
+  assert.equal(await passwords.verify('long demo password','public-old-password'),false);
+});
+
+test('session store expires abandoned sessions and rejects growth beyond capacity',()=>{
+  const {BoundedSessionStore}=require('../app/data/session-store');
+  const store=new BoundedSessionStore();
+  const session={cookie:{expires:new Date(Date.now()+60000)}};
+  for(let i=0;i<1000;i++)store.set(String(i),session,e=>assert.ifError(e));
+  store.set('overflow',session,e=>assert.match(e.message,/capacity/));
+  store.sessions.get('0').expires=Date.now()-1;
+  store.get('0',(e,value)=>{assert.ifError(e);assert.equal(value,null);});
+  store.set('replacement',session,e=>assert.ifError(e));
+  clearInterval(store.timer);
 });

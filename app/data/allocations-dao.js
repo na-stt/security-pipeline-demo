@@ -36,9 +36,10 @@ const AllocationsDAO = function(db){
 
                 console.log("Updated allocations");
 
-                userDAO.getUserById(userId, (err, user) => {
+                return userDAO.getUserById(userId, (err, user) => {
 
                     if (err) return callback(err, null);
+                    if (!user) return callback(new Error("Missing allocation owner"));
 
                     // add user details
                     allocations.userId = userId;
@@ -67,7 +68,7 @@ const AllocationsDAO = function(db){
 
         allocationsCol.find(searchCriteria()).toArray((err, allocations) => {
             if (err) return callback(err, null);
-            if (!allocations.length) return callback("ERROR: No allocations found for the user", null);
+            if (!allocations.length) return callback(null, []);
 
             let doneCounter = 0;
             const userAllocations = [];

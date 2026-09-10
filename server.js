@@ -5,6 +5,8 @@ const helmet = require('helmet');
 const nunjucks = require('nunjucks');
 const {randomBytes, timingSafeEqual} = require('node:crypto');
 const path = require('node:path');
+const {rateLimit}=require('express-rate-limit');
+const {BoundedSessionStore}=require('./app/data/session-store');
 const {connect} = require('./app/data/database');
 const config = require('./config/config');
 
@@ -16,7 +18,10 @@ function createApp(database) {
   app.use(express.static(path.join(__dirname,'app/assets')));
   app.use(express.urlencoded({extended:false,limit:'16kb'}));
   app.use(express.json({limit:'16kb'}));
-  app.use(session({secret:process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
+  app.use(rateLimit({windowMs:60000,limit:100}));
+  app.use(['/login','/signup'],rateLimit({windowMs:60000,limit:10}));
+  app.use(['/login','/signup'],rateLimit({windowMs:60000,limit:6,skip:req=>req.method!=='POST',keyGenerator:req=>String(req.body?.userName||'').slice(0,100)}));
+  app.use(session({store:new BoundedSessionStore(),secret:process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
     resave:false,saveUninitialized:false,cookie:{httpOnly:true,sameSite:'strict',maxAge:3600000}}));
   app.use((req,res,next)=>{
     req.session.csrf ||= randomBytes(32).toString('hex');

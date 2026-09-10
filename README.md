@@ -21,13 +21,13 @@ Requires Node 24+ and Docker Compose for MongoDB:
 npm ci --ignore-scripts
 npm test
 docker compose up -d mongo
-# To seed an empty local demo database (this explicitly resets demo data):
+# Optional, idempotent schema initialization (also performed on startup):
 docker compose run --rm --build web npm run db:seed
 docker compose up -d --build web
 ```
 
 Open http://localhost:4000 and create a demo account. The web port binds only to
-localhost. The seeded training users also remain available; use no real data.
+localhost. No accounts or known passwords are seeded; use no real data.
 A random session key is generated at startup; optionally provide SESSION_SECRET
 when starting Node directly. Do not publish this training application.
 
@@ -41,7 +41,7 @@ required regression check and does not replace or disable the App gate.
 The focused runtime mounts login/signup, contributions, and allocations only.
 Other original NodeGoat lessons remain as reference source, not active routes.
 Nunjucks replaces Swig with automatic HTML escaping; CSRF validation and session
-regeneration protect the active forms. Passwords are hashed. Allocation thresholds
+regeneration protect the active forms. Passwords use bounded asynchronous scrypt; authentication is rate limited. Sessions have TTL eviction and a hard capacity bound. Allocation thresholds
 are validated and queried using MongoDB operators rather than JavaScript `$where`.
 The obsolete checked-in training TLS private key is removed from the current tree;
 its historical copies remain and must never be trusted as a real credential.

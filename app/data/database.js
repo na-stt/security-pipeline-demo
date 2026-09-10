@@ -25,6 +25,13 @@ function callbacks(database) {
   };
 }
 function connect(uri, callback) {
-  MongoClient.connect(uri).then(client=>callback(null,callbacks(client.db()),client),error=>callback(error));
+  MongoClient.connect(uri).then(async client=>{
+    try {
+      const database=client.db();
+      await database.collection('users').createIndex({userName:1},{unique:true});
+      await database.collection('counters').updateOne({_id:'userId'},{$setOnInsert:{seq:0}},{upsert:true});
+      callback(null,callbacks(database),client);
+    } catch(error){await client.close();callback(error);}
+  },error=>callback(error));
 }
 module.exports={connect,callbacks};
