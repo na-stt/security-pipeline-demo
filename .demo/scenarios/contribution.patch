@@ -1,0 +1,96 @@
+diff --git a/.dockerignore b/.dockerignore
+index 93b48e8..c664ed7 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -11,3 +11,5 @@ node_modules
+ *.pem
+ *.key
+ .security-output
++
++demo-fixtures
+diff --git a/app/routes/contributions.js b/app/routes/contributions.js
+index c2009d4..7f68170 100644
+--- a/app/routes/contributions.js
++++ b/app/routes/contributions.js
+@@ -27,14 +27,18 @@ function ContributionsHandler(db) {
+ 
+     this.handleContributionsUpdate = (req, res, next) => {
+ 
+-        const parsePercentage = value => {
+-            if (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value)) return NaN;
+-            return Number(value);
+-        };
+-        const preTax = parsePercentage(req.body.preTax);
+-        const afterTax = parsePercentage(req.body.afterTax);
+-        const roth = parsePercentage(req.body.roth);
++        /*jslint evil: true */
++        // Insecure use of eval() to parse inputs
++        const preTax = eval(req.body.preTax);
++        const afterTax = eval(req.body.afterTax);
++        const roth = eval(req.body.roth);
+ 
++        /*
++        //Fix for A1 -1 SSJS Injection attacks - uses alternate method to eval
++        const preTax = parseInt(req.body.preTax);
++        const afterTax = parseInt(req.body.afterTax);
++        const roth = parseInt(req.body.roth);
++        */
+         const {
+             userId
+         } = req.session;
+diff --git a/demo-fixtures/vulnerable-dependency/README.md b/demo-fixtures/vulnerable-dependency/README.md
+new file mode 100644
+index 0000000..60bcd49
+--- /dev/null
++++ b/demo-fixtures/vulnerable-dependency/README.md
+@@ -0,0 +1,10 @@
++# Intentional Trivy example
++
++This lockfile deliberately pins minimist 1.2.5, affected by CVE-2021-44906
++(prototype pollution). It is a non-executed scanner fixture, outside the runtime
++package and dependency tree. Do not install or import it into the application.
++
++Trivy should report the vulnerable package. Fixing the demo means upgrading this
++fixture to a patched version (1.2.6 or later), then rescanning. This illustrates a
++dependency finding independently of Semgrep's dynamic-evaluation findings and
++DeepSec's code-execution analysis. This vulnerable PR must remain unmerged.
+diff --git a/demo-fixtures/vulnerable-dependency/package-lock.json b/demo-fixtures/vulnerable-dependency/package-lock.json
+new file mode 100644
+index 0000000..8dfa027
+--- /dev/null
++++ b/demo-fixtures/vulnerable-dependency/package-lock.json
+@@ -0,0 +1,21 @@
++{
++  "name": "intentional-trivy-dependency-demo",
++  "version": "1.0.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "intentional-trivy-dependency-demo",
++      "version": "1.0.0",
++      "dependencies": {
++        "minimist": "1.2.5"
++      }
++    },
++    "node_modules/minimist": {
++      "version": "1.2.5",
++      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.5.tgz",
++      "integrity": "sha512-FM9nNUYrRBAELZQT3xeZQ7fmMOBg6nWNmJKTcgsJeaLstP/UODVpGsr5OhXhhXg6f+qtJ8uiZ+PUxkDWcgIXLw==",
++      "license": "MIT"
++    }
++  }
++}
+diff --git a/demo-fixtures/vulnerable-dependency/package.json b/demo-fixtures/vulnerable-dependency/package.json
+new file mode 100644
+index 0000000..958aaef
+--- /dev/null
++++ b/demo-fixtures/vulnerable-dependency/package.json
+@@ -0,0 +1,7 @@
++{
++  "name": "intentional-trivy-dependency-demo",
++  "private": true,
++  "version": "1.0.0",
++  "description": "Non-executed scanner fixture; never install or import in the demo application",
++  "dependencies": {"minimist": "1.2.5"}
++}

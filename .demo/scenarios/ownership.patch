@@ -1,0 +1,13 @@
+diff --git a/app/routes/allocations.js b/app/routes/allocations.js
+index 4111c0a..40dcdeb 100644
+--- a/app/routes/allocations.js
++++ b/app/routes/allocations.js
+@@ -9,7 +9,7 @@ function AllocationsHandler(db) {
+     const allocationsDAO = new AllocationsDAO(db);
+ 
+     this.displayAllocations = (req, res, next) => {
+-        const userId = req.session && req.session.userId;
++        const userId = req.params.userId;
+         if (!userId) return res.status(401).send("Authentication required");
+         const {
+             threshold

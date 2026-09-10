@@ -61,7 +61,7 @@ function SessionHandler(db) {
             const invalidPasswordErrorMessage = "Invalid password";
             if (err) {
                 if (err.noSuchUser) {
-                    console.log("Error: attempt to login with invalid user: ", userName);
+                    console.log("Invalid login attempt");
 
                     // Fix for A1 - 3 Log Injection - encode/sanitize input for CRLF Injection
                     // that could result in log forging:
@@ -82,7 +82,7 @@ function SessionHandler(db) {
                     return res.render("login", {
                         userName: userName,
                         password: "",
-                        loginError: invalidUserNameErrorMessage,
+                        loginError: errorMessage,
                         //Fix for A2-2 Broken Auth - Uses identical error for both username, password error
                         // loginError: errorMessage
                         environmentalScripts
@@ -91,7 +91,7 @@ function SessionHandler(db) {
                     return res.render("login", {
                         userName: userName,
                         password: "",
-                        loginError: invalidPasswordErrorMessage,
+                        loginError: errorMessage,
                         //Fix for A2-2 Broken Auth - Uses identical error for both username, password error
                         // loginError: errorMessage
                         environmentalScripts
@@ -112,9 +112,12 @@ function SessionHandler(db) {
             // Fix the problem by regenerating a session in each login
             // by wrapping the below code as a function callback for the method req.session.regenerate()
             // i.e:
-            // `req.session.regenerate(() => {})`
-            req.session.userId = user._id;
-            return res.redirect(user.isAdmin ? "/benefits" : "/dashboard");
+            // Regenerate the session before attaching authenticated identity.
+            return req.session.regenerate(error => {
+                if (error) return next(error);
+                req.session.userId = user._id;
+                return res.redirect('/dashboard');
+            });
         });
     };
 
@@ -137,11 +140,15 @@ function SessionHandler(db) {
 
     const validateSignup = (userName, firstName, lastName, password, verify, email, errors) => {
 
+        if (![userName, firstName, lastName, password, verify, email].every(value => typeof value === 'string')) {
+            errors.userNameError = 'Invalid registration fields';
+            return false;
+        }
         const USER_RE = /^.{1,20}$/;
         const FNAME_RE = /^.{1,100}$/;
         const LNAME_RE = /^.{1,100}$/;
         const EMAIL_RE = /^[\S]+@[\S]+\.[\S]+$/;
-        const PASS_RE = /^.{1,20}$/;
+        const PASS_RE = /^.{12,128}$/;
         /*
         //Fix for A2-2 - Broken Authentication -  requires stronger password
         //(at least 8 characters with numbers and both lowercase and uppercase letters.)
@@ -169,8 +176,7 @@ function SessionHandler(db) {
             return false;
         }
         if (!PASS_RE.test(password)) {
-            errors.passwordError = "Password must be 8 to 18 characters" +
-                " including numbers, lowercase and uppercase letters.";
+            errors.passwordError = "Password must be between 12 and 128 characters.";
             return false;
         }
         if (password !== verify) {
@@ -219,6 +225,7 @@ function SessionHandler(db) {
 
                 userDAO.addUser(userName, firstName, lastName, password, email, (err, user) => {
 
+                    if (err?.code === 11000) return res.status(409).send('Username already registered');
                     if (err) return next(err);
 
                     //prepare data for the user
@@ -231,7 +238,8 @@ function SessionHandler(db) {
                         return res.render("dashboard", { ...user, environmentalScripts });
                     });
                     */
-                    req.session.regenerate(() => {
+                    req.session.regenerate(error => {
+                        if (error) return next(error);
                         req.session.userId = user._id;
                         // Set userId property. Required for left nav menu links
                         user.userId = user._id;
