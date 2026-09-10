@@ -47,7 +47,14 @@ jobs:
                     body:body?JSON.stringify(body):undefined,redirect:'error',signal:AbortSignal.timeout(20000)});
                   if(response.status===401) {tokenUntil=0;throw new Error('Authentication failed');}
                   if(!response.ok) {
-                    if(response.status>=400&&response.status<500&&response.status!==429) throw Object.assign(new Error(`Scan request rejected (HTTP ${response.status})`),{fatal:true});
+                    if(response.status>=400&&response.status<500&&response.status!==429) {
+                      let detail='Non-controller or unrecognized response';
+                      try {
+                        const error=await response.json();
+                        if(['Not found','Scan unavailable','Report not ready','Invalid cursor','PR changed or is not ready','Repository mismatch'].includes(error.error)) detail=error.error;
+                      } catch {}
+                      throw Object.assign(new Error(`Scan request rejected (HTTP ${response.status}, ${path}): ${detail}`),{fatal:true});
+                    }
                     throw new Error('Service unavailable');
                   }
                   return await response.json();
