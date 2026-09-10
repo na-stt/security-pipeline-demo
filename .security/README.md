@@ -3,18 +3,18 @@
 ## What runs
 
 1. `security-scan.yml` runs on PR `opened`, `synchronize`, `reopened`, and
-   `ready_for_review`, including drafts and forks subject to GitHub's runner approval
+   `ready_for_review`, skipping draft jobs; forks remain subject to GitHub's runner approval
    policy. Semgrep and Trivy run independently with `contents: read`.
 2. `security-report.yml` runs from the default branch after the scan completes.
    It verifies the originating workflow, event, run attempt, repository, open PR,
    and current head SHA through GitHub's API. Superseded/cancelled runs are ignored.
 3. A separate job optionally runs DeepSec for same-repository PRs. Forks never
    receive the model key. AI-disabled or missing-key runs explicitly report a skip.
-4. A publisher job validates report data, creates `Security / summary` on the exact
+4. A publisher job validates report data, creates `Security / gate` on the exact
    PR head, and updates a single PR comment. It rechecks freshness before posting.
    Up to 50 individual findings get check annotations; all are retained as artifacts.
 
-The scan and reporting workflows must already be on the default branch to bootstrap
+The scan, status, and reporting workflows must already be on the default branch to bootstrap
 this design. Do not expect a PR that first introduces them to exercise the whole flow.
 The unprivileged scan loads policy from the target base commit. DeepSec and reporting
 load policy from the default branch, independently of changes proposed in the PR.
@@ -105,6 +105,7 @@ git -C "$target_dir" switch -c chore/security-pipeline
 mkdir -p "$target_dir/.github/workflows" "$target_dir/.security"
 cp "$starter_dir/.github/workflows/security-scan.yml" "$target_dir/.github/workflows/"
 cp "$starter_dir/.github/workflows/security-report.yml" "$target_dir/.github/workflows/"
+cp "$starter_dir/.github/workflows/security-status.yml" "$target_dir/.github/workflows/"
 rsync -a --exclude=node_modules --exclude=__pycache__ \
   "$starter_dir/.security/" "$target_dir/.security/"
 ```
@@ -227,8 +228,8 @@ all environment, model-key, source-checkout, and AI-installation steps from this
 
 Create no model secret and no `security-analysis` environment for this profile. Leave
 the AI variables unset. Semgrep, Trivy, and the PR publisher continue to run, and
-DeepSec is honestly marked skipped. With no blocking findings/errors, the summary
-check is neutral rather than claiming all three scanners completed.
+DeepSec is explicitly skipped. The strict combined gate fails because AI coverage is
+required. Path B is useful for static reporting, but cannot satisfy this three-scanner gate.
 
 To add AI later, restore the original `deepsec` job from reviewed starter policy and
 complete Path A after obtaining the required environment protections. Changing runner
@@ -246,7 +247,7 @@ Open a new pilot PR using a small harmless code change. Then verify:
 1. **Actions → Security scan** shows separate Semgrep and Trivy jobs.
 2. Each job uploads its `security-<scanner>-<attempt>` normalized JSON report.
 3. **Actions → Security report** validates the PR, records AI findings or an explicit
-   skip, and publishes a PR comment plus `Security / summary` on that exact commit.
+   skip, and publishes a PR comment plus `Security / gate` on that exact commit.
 4. Push another commit to the pilot PR. New scans should run; the comment should refer
    to the new head rather than an older report. Old artifacts may remain until expiry.
 5. If your contribution model includes forks, open a controlled fork PR and approve
@@ -257,17 +258,20 @@ Open a new pilot PR using a small harmless code change. Then verify:
 7. For Path A, enable AI on a small same-repository PR and inspect `deepsec.json` for
    `status: complete`, findings, and coverage. A green static scan does not prove AI ran.
 
-After the pilot, configure required checks under repository branch protection/rules
-where your plan supports them. `Security / summary` applies the findings policy;
-`semgrep` and `trivy` primarily indicate scanner execution. A neutral result permits
-skipped AI in this initial policy, so requiring the summary alone does not require AI
-coverage. Agree on fork and skip policy before enforcing AI on every PR.
+After the pilot, require `Security / gate` from GitHub Actions alongside existing tests,
+with up-to-date branches and administrator enforcement. The named Security checks apply
+findings policy; native `semgrep` and `trivy` checks indicate execution. Missing, skipped,
+failed, or partial required coverage blocks the gate. Fork AI remains disabled and blocks
+this strict policy; do not expose secrets to forks to make a check pass.
 
-The starter's PR workflow is not tamper-proof: a same-repository contributor can
-propose workflow edits and forge reports in an unprivileged run. The trusted publisher
-validates provenance and treats artifacts solely as data; it cannot prove the scan
-was honest. Required workflow enforcement from a protected organization policy
-repository is a later option if scan integrity must withstand malicious contributors.
+The publisher rejects PR scan workflows whose bytes differ from protected default-branch
+policy. Review workflow upgrades separately before expecting that PR to satisfy the gate.
+Require code-owner reviews of `.github/` and `.security/`. Contributors with repository
+write access can still propose other workflows or checks using the same GitHub Actions app;
+this is not organization-level required-workflow enforcement. Protect policy reviews and
+restrict who can push same-repository branches. A dedicated check-writing GitHub App or
+organization-required workflow is a later option against malicious repository writers.
+See [gate deployment and report contract](GATE.md).
 
 If default-branch-only secret access cannot be enforced, use Path B. An external
 credential broker or separate trusted scanning service is a future design option,
@@ -335,7 +339,9 @@ rescanning on each update. GitHub runner minutes and artifact storage may also c
 - Reporting runs on a fresh GitHub-hosted runner. Only default-branch code executes;
   artifact strings are not shell commands, prompts, Markdown templates, or GitHub API
   identities. Sizes, field types, paths, and finding counts are bounded before display.
-  PR comments contain fixed text/counts, not scanner prose or source excerpts.
+  PR comments contain fixed decisions/counts plus bounded, escaped scanner prose. HTML,
+  Markdown links/images, and mentions in scanner fields are escaped. This prevents active
+  rendering; it does not make the prose trusted instructions for an AI agent.
 
 ## Findings and developer experience
 
@@ -344,8 +350,8 @@ code findings requiring confidence review, dependencies/CVEs, secrets, IaC/conta
 misconfigurations, and informational findings. Severity and confidence remain separate.
 Unknown confidence is not upgraded to high.
 
-`Security / summary` fails for potential exposed secrets, HIGH/CRITICAL code findings
-with high confidence, and missing/failed/partial scanner coverage. Dependency findings,
+`Security / gate` fails for potential exposed secrets, HIGH/CRITICAL code findings
+with high confidence, and missing/failed/partial/skipped scanner coverage. Dependency findings,
 other code findings, and misconfigurations are advisory initially. This avoids blocking
 every PR on existing dependency debt. The scanner jobs themselves fail on execution
 errors; the aggregate check applies the finding policy. Tune `reports.blocking` in a
@@ -355,6 +361,10 @@ Artifacts are kept for seven days: `security-semgrep-<attempt>`,
 `security-trivy-<attempt>`, `security-deepsec-<attempt>`, and
 `security-summary-<scan-run-id>-<report-attempt>`. They contain normalized JSON with
 location, rule ID, category, severity, confidence, and available remediation information.
+The combined artifact contains `security-report.json` (schema version 2) and a generated
+`security-report.md`; the PR comment previews the Markdown with blocking findings first.
+Each observation has a stable ID and `baseline_status: unknown`; overlap is retained.
+The gate also fails if the originating scan workflow failed despite writing reports.
 Raw scanner output, source snippets, agent transcripts, and Trivy secret matches are
 not uploaded. AI-generated descriptions can still reproduce source; artifact access
 follows repository visibility. Do not place real secrets in test PRs.
@@ -408,7 +418,7 @@ scan_model=openai/gpt-5.5
 python3 .security/scripts/deepsec.py --source "$scan_source" \
   --base "$scan_base" --model "$scan_model" --out .security-output
 
-python3 .security/scripts/aggregate.py --reports .security-output --out .security-output/aggregate.json
+python3 .security/scripts/aggregate.py --reports .security-output --out .security-output/security-report.json --markdown .security-output/security-report.md
 ```
 
 Without the AI key, the DeepSec adapter writes an explicit skipped report without
