@@ -1,7 +1,0 @@
-{
-  "name": "security-pipeline-deepsec",
-  "private": true,
-  "type": "module",
-  "engines": { "node": ">=22" },
-  "dependencies": { "deepsec": "2.3.9" }
-}

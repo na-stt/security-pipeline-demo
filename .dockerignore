@@ -4,3 +4,10 @@ docker-compose.yml
 .git
 .github
 .gitignore
+
+node_modules
+.env
+.env.*
+*.pem
+*.key
+.security-output

@@ -1,18 +1,9 @@
-FROM node:12-alpine
-ENV WORKDIR /usr/src/app/
-WORKDIR $WORKDIR
-COPY package*.json $WORKDIR
-RUN npm install --production --no-cache
-
-FROM node:12-alpine
-ENV USER node
-ENV WORKDIR /home/$USER/app
-WORKDIR $WORKDIR
-COPY --from=0 /usr/src/app/node_modules node_modules
-RUN chown $USER:$USER $WORKDIR
-COPY --chown=node . $WORKDIR
-# In production environment uncomment the next line
-#RUN chown -R $USER:$USER /home/$USER && chmod -R g-s,o-rx /home/$USER && chmod -R o-wrx $WORKDIR
-# Then all further actions including running the containers should be done under non-root user.
-USER $USER
+FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY --chown=node:node . .
+USER node
 EXPOSE 4000
+HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "server.js"]

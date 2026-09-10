@@ -68,3 +68,14 @@ test('allocation lookup denies missing authentication before querying', () => {
   assert.equal(res.statusCode, 401);
   assert.equal(called, false);
 });
+
+test('allocation threshold rejects query-language input before data access', () => {
+  let called=false;
+  const routes=handler('allocations.js','AllocationsDAO',{getByUserIdAndThreshold(){called=true;}});
+  for (const threshold of ["0';return true",{},[], 'Infinity','100','-1']) {
+    const res=response();
+    routes.displayAllocations({session:{userId:1},params:{userId:'1'},query:{threshold}},res,e=>{throw e;});
+    assert.equal(res.statusCode,400);
+  }
+  assert.equal(called,false);
+});
