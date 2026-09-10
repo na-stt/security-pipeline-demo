@@ -79,3 +79,8 @@ test('allocation threshold rejects query-language input before data access', () 
   }
   assert.equal(called,false);
 });
+
+test('surrounding whitespace preserves valid decimal contribution values', () => {
+  const {updates} = contribution({preTax: ' 10.5 ', afterTax: ' 5 ', roth: '0'});
+  assert.deepEqual(updates, [[1, 10.5, 5, 0]]);
+});
