@@ -176,8 +176,7 @@ function SessionHandler(db) {
             return false;
         }
         if (!PASS_RE.test(password)) {
-            errors.passwordError = "Password must be 8 to 18 characters" +
-                " including numbers, lowercase and uppercase letters.";
+            errors.passwordError = "Password must be between 12 and 128 characters.";
             return false;
         }
         if (password !== verify) {
