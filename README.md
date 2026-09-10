@@ -31,6 +31,8 @@ flowchart LR
   PR[PR ready or updated] --> S[Semgrep in Docker]
   PR --> T[Trivy in Docker]
   PR --> TEST[Isolated regression tests]
+  PR --> STATUS[Trusted status workflow: pending checks]
+  STATUS --> GATE[Security / gate: required before merge]
   S --> A[Sanitized report artifacts]
   T --> A
   A --> V[Trusted workflow validates PR and run]
@@ -38,12 +40,13 @@ flowchart LR
   D <--> OR[OpenRouter: GPT-6 Astra, low reasoning]
   D --> P[Separate trusted publisher]
   A --> P
-  P --> R[PR comment, check annotations, report artifacts]
+  P --> R[Readable PR report, annotations, Markdown and JSON artifacts]
+  P --> GATE
 ```
 
 All jobs use temporary GitHub-hosted Ubuntu runners. The scan and test jobs have
 `contents: read`, no model secrets, and no persisted checkout credentials. The
-publisher has only the additional permissions to write PR comments/checks. DeepSec
+trusted status/context jobs can write checks; the publisher can also write PR comments. DeepSec
 uses trusted default-branch policy and treats the PR snapshot as untrusted data.
 It never installs the app, runs it, or changes code. Fork PRs skip credentialed AI.
 
@@ -63,13 +66,35 @@ It never installs the app, runs it, or changes code. Fork PRs skip credentialed 
 5. Keep `SECURITY_DEEPSEC_ENABLED=false` for the static pilot, then set it to `true`
    after the environment secret is saved. Push a new commit to a demo PR to run the
    pipeline again. Missing credentials produce an explicit AI skip, not a clean AI review.
-6. Use branches inside this fork for the AI demonstration. Open PRs against this
+6. Require **Security / gate** from **GitHub Actions** alongside **Demo regression tests**,
+   preserving strict up-to-date branches, code-owner reviews, and administrator enforcement.
+   See [gate setup and JSON/Markdown contract](.security/GATE.md). Missing, skipped, failed,
+   or partial required scans block. Forks keep their AI skip and cannot pass the strict gate.
+7. Use branches inside this fork for the AI demonstration. Open PRs against this
    fork's `master`, never against OWASP upstream. Do not merge the vulnerable branches.
 
 See [complete pipeline setup and local scan commands](.security/README.md),
 [scanner responsibilities and architecture](SECURITY-PIPELINE.md), and
 [future remediation design](.security/AUTOFIX.md). There is no executable autofix
 workflow yet; adding `security-autofix` currently does nothing.
+
+## Reading the security report
+
+Look for **Security / gate** and the individual **Security / Semgrep**, **Security / Trivy**,
+and **Security / DeepSec** checks. They remain pending while results are collected.
+The native scanner jobs show execution success; the Security checks apply findings policy.
+
+The bot updates one PR comment with the exact head SHA, scanner coverage, blocking/advisory
+counts, and each finding's ID, file/line, severity, confidence, evidence, and suggested fix.
+The artifact link provides `security-report.md` for reading and `security-report.json` for
+structured automation. Long comments are shortened; complete reports remain in artifacts
+for seven days. Findings are scanner observations; overlap and unknown baseline status
+are preserved. An AI agent must independently verify findings before attempting a repair.
+
+Potential secrets and HIGH/CRITICAL code findings with high confidence block. Dependency
+CVEs and misconfigurations are advisory initially. Existing NodeGoat findings can keep the
+gate red after the demonstrated regression is repaired. This is deliberate; there is no
+automatic waiver and no automatic code modification.
 
 ## Run regression tests locally
 
@@ -97,7 +122,7 @@ git push
 ```
 
 Check both the latest PR commit and the security comment's referenced commit. The
-publisher rejects stale runs. `Security / summary` can remain failed due to NodeGoat's
+publisher rejects stale runs. `Security / gate` can remain failed due to NodeGoat's
 other intentional findings; use the per-file annotations and artifacts to inspect
 the demonstrated change. DeepSec reviews changed files, not every untouched baseline
 file. Its review budget is 20 changed files/500 KB and 15 minutes.

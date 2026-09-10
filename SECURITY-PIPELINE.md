@@ -1,12 +1,12 @@
 # Pull request security pipeline
 
 A GitHub Actions starter that checks pull requests with **Semgrep Community Edition**,
-**Trivy OSS**, and optional **DeepSec AI review**, then publishes findings on the PR.
+**Trivy OSS**, and **DeepSec AI review**, then publishes findings on the PR.
 It never automatically changes application code.
 
-**Status:** implemented and locally tested as a reusable starter; not yet activated
-in a target GitHub repository. This workspace had no Git remote, application, or
-existing workflows when inspected. Scanner coverage must be tailored to each project.
+**Status:** reusable starter with a public [NodeGoat demo](https://github.com/na-stt/security-pipeline-demo).
+Scanner coverage must be tailored to each project. This change adds a strict combined
+gate; deployment and branch-protection setup are required to enforce it.
 
 - [Architecture: what runs where](#architecture-what-runs-where)
 - [What each scanner does](#what-each-scanner-does)
@@ -27,7 +27,10 @@ model runs at an external provider, reached through OpenRouter.
 
 ```mermaid
 flowchart TD
-    PR["PR opened or updated"]
+    PR["Non-draft PR opened, updated,<br/>or marked ready for review"]
+    STATUS["security-status.yml<br/>Create pending PR checks"]
+    PR --> STATUS
+    STATUS --> GATE["Security / gate<br/>Required before merge"]
 
     subgraph GH["GitHub-hosted infrastructure"]
         subgraph SCAN["Workflow 1: security-scan.yml"]
@@ -48,7 +51,8 @@ flowchart TD
 
         A -->|"After scan workflow completes"| V
         A -->|"Semgrep + Trivy findings"| P
-        P --> RESULT["PR comment + check annotations<br/>Saved report artifacts"]
+        P --> RESULT["Readable PR report + annotations<br/>security-report.md + security-report.json"]
+        P --> GATE
     end
 
     PR --> S
@@ -63,8 +67,8 @@ Each job gets a fresh runner; the machines are removed afterward. Reports persis
 GitHub artifact storage for seven days. The diagram shows the enabled AI path; forks
 and disabled AI produce a skipped report without contacting the model.
 
-The scanning jobs have repository read access. Only the final publishing job can write
-PR comments and checks; it cannot commit source changes. That job executes trusted
+The scanning jobs have repository read access. Only trusted metadata/reporting jobs can write checks; the final publisher also writes
+PR comments; it cannot commit source changes. That job executes trusted
 default-branch reporting scripts and consumes scanner artifacts only as data.
 
 The GitHub environment named `security-analysis` stores the model credential and
@@ -184,7 +188,7 @@ in order. It includes copy commands, GitHub settings, both supported setup paths
 credential provisioning, exact variables, and pilot verification.
 
 1. **Prepare the target repository.** Identify its language/framework and existing
-   workflows. Copy the two workflow files and `.security/` directory without generated
+   workflows. Copy the three workflow files and `.security/` directory without generated
    output or dependencies; merge with any existing policy rather than overwriting it.
 2. **Choose the setup path.** Use the full profile on public repositories or eligible
    paid private repositories. For private GitHub Free, use the documented
@@ -206,17 +210,31 @@ credential provisioning, exact variables, and pilot verification.
 
 ## Developer results
 
-The pipeline updates one PR comment and creates a `Security / summary` check. Findings
-are grouped into high-severity/high-confidence code vulnerabilities, other code
-findings, dependency/CVE findings, secrets, IaC/container misconfigurations, and
-informational findings. Up to 50 check annotations are displayed; normalized JSON
-artifacts contain all retained findings and are stored for seven days.
+The pipeline creates **Security / gate**, plus **Security / Semgrep**, **Security / Trivy**,
+and **Security / DeepSec** on the exact PR head. They appear pending while work is running.
+The native `semgrep`/`trivy` jobs show execution status; the named Security checks apply
+findings policy. A green execution job can still produce a failing security check.
 
-The current policy fails the aggregate check for potential secrets, HIGH/CRITICAL code
-findings with high confidence, or failed/missing/partial scanner coverage. Dependencies,
-misconfigurations, and other code findings are advisory. Skipped DeepSec gives a neutral
-summary when no failing condition is present; neutral does not mean AI review completed.
-See [finding policy and artifacts](.security/README.md#findings-and-developer-experience).
+The gate passes only after all three scanners complete with no blocking findings.
+Potential secrets and HIGH/CRITICAL code vulnerabilities with high scanner confidence
+block. Dependency/CVE findings, misconfigurations, and other findings are advisory.
+Missing, failed, partial, disabled, or skipped required scans never pass the gate.
+Forks do not receive the model key; their skipped DeepSec review therefore blocks this
+strict gate until a separate trusted review path is designed.
+
+One updated PR comment shows the decision, scanner coverage, counts, and finding details:
+ID, severity, confidence, file/line, evidence, and suggested next step. Blocking findings
+come first. Long comments are shortened with a link to the complete artifact. Up to 50
+annotations appear on the gate. The artifact contains **security-report.md** for humans
+and agents, and **security-report.json** as the structured source of truth. Both contain
+the same observations and are retained seven days. Baseline status is explicitly unknown;
+counts are not deduplicated across scanners and confidence is not independent verification.
+
+**Enable enforcement:** after merging the workflows into the protected default branch,
+configure `Security / gate` as a required status check from **GitHub Actions**, alongside
+existing tests, with branches required to be up to date. Keep administrator enforcement
+and required reviews. Merely publishing the check does not prevent merges.
+See [full gate setup and report contract](.security/GATE.md).
 
 ## Local use, remediation, and self-hosted runners
 
@@ -234,3 +252,16 @@ See [finding policy and artifacts](.security/README.md#findings-and-developer-ex
 - [Validation status](.security/README.md#validation-performed-here): local tests passed;
   live GitHub publishing, protected-environment behavior, Linux container execution,
   and paid model calls still need verification in the target repository.
+
+## Draft pull requests
+
+Draft PRs skip the security scan jobs. Mark a PR **Ready for review** to trigger
+Semgrep, Trivy, and the eligible DeepSec review; further updates rerun them while
+it remains ready. Returning a PR to draft cancels an active scan through its
+concurrency group. GitHub may still show skipped workflow entries. The trusted
+reporter rechecks draft state before starting AI and before publishing; an AI
+request already in progress may finish, but its report is not published while
+the PR remains draft. Existing comments and check results are retained as history.
+
+Trivy uses a disposable runner-disk cache because its vulnerability database can
+exceed the container's 1 GB `/tmp` limit. The cache is never reused between runs.

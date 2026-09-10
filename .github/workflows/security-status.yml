@@ -1,0 +1,31 @@
+name: Security status
+
+on:
+  workflow_run:
+    workflows: [Security scan]
+    types: [requested, in_progress]
+
+# Fresh trusted runner: metadata and checks only, no PR checkout or model key.
+permissions: {}
+concurrency:
+  group: security-status-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  pending:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      checks: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const policy = require('./.security/scripts/github.cjs');
+            await policy.start({github, context, core});
