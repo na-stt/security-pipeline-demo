@@ -6,7 +6,8 @@
 // before running it (default: development). ie:
 // NODE_ENV=production node artifacts/db-reset.js
 
-const { MongoClient } = require("mongodb");
+const MongoClient = require("../app/data/database");
+const bcrypt = require("bcryptjs");
 const { db } = require("../config/config");
 
 const USERS_TO_INSERT = [
@@ -35,6 +36,8 @@ const USERS_TO_INSERT = [
         "password": "User2_123"
         //"password" : "$2a$10$Tlx2cNv15M0Aia7wyItjsepeA8Y6PyBYaNdQqvpxkIUlcONf1ZHyq", // User2_123
     }];
+
+for (const user of USERS_TO_INSERT) user.password = bcrypt.hashSync(user.password,12);
 
 const tryDropCollection = (db, name) => {
     return new Promise((resolve, reject) => {
@@ -96,7 +99,7 @@ MongoClient.connect(db, (err, db) =>  {
 
         // insert admin and test users
         console.log("Users to insert:");
-        USERS_TO_INSERT.forEach((user) => console.log(JSON.stringify(user)));
+
 
         usersCol.insertMany(USERS_TO_INSERT, (err, data) => {
             const finalAllocations = [];

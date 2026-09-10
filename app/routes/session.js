@@ -61,7 +61,7 @@ function SessionHandler(db) {
             const invalidPasswordErrorMessage = "Invalid password";
             if (err) {
                 if (err.noSuchUser) {
-                    console.log("Error: attempt to login with invalid user: ", userName);
+                    console.log("Invalid login attempt");
 
                     // Fix for A1 - 3 Log Injection - encode/sanitize input for CRLF Injection
                     // that could result in log forging:
@@ -82,7 +82,7 @@ function SessionHandler(db) {
                     return res.render("login", {
                         userName: userName,
                         password: "",
-                        loginError: invalidUserNameErrorMessage,
+                        loginError: errorMessage,
                         //Fix for A2-2 Broken Auth - Uses identical error for both username, password error
                         // loginError: errorMessage
                         environmentalScripts
@@ -91,7 +91,7 @@ function SessionHandler(db) {
                     return res.render("login", {
                         userName: userName,
                         password: "",
-                        loginError: invalidPasswordErrorMessage,
+                        loginError: errorMessage,
                         //Fix for A2-2 Broken Auth - Uses identical error for both username, password error
                         // loginError: errorMessage
                         environmentalScripts
@@ -113,8 +113,11 @@ function SessionHandler(db) {
             // by wrapping the below code as a function callback for the method req.session.regenerate()
             // i.e:
             // `req.session.regenerate(() => {})`
-            req.session.userId = user._id;
-            return res.redirect(user.isAdmin ? "/benefits" : "/dashboard");
+            return req.session.regenerate(error => {
+                if (error) return next(error);
+                req.session.userId = user._id;
+                return res.redirect('/dashboard');
+            });
         });
     };
 
@@ -137,6 +140,10 @@ function SessionHandler(db) {
 
     const validateSignup = (userName, firstName, lastName, password, verify, email, errors) => {
 
+        if (![userName, firstName, lastName, password, verify, email].every(value => typeof value === 'string')) {
+            errors.userNameError = 'Invalid registration fields';
+            return false;
+        }
         const USER_RE = /^.{1,20}$/;
         const FNAME_RE = /^.{1,100}$/;
         const LNAME_RE = /^.{1,100}$/;
