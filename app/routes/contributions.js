@@ -29,7 +29,8 @@ function ContributionsHandler(db) {
 
         const parsePercentage = value => {
             if (typeof value !== "string" || !/^\d+(?:\.\d+)?$/.test(value)) return NaN;
-            return Number(value);
+            const percentage = Number(value);
+            return Number.isFinite(percentage) ? percentage : NaN;
         };
         const preTax = parsePercentage(req.body.preTax);
         const afterTax = parsePercentage(req.body.afterTax);
@@ -40,7 +41,7 @@ function ContributionsHandler(db) {
         } = req.session;
 
         //validate contributions
-        const validations = [isNaN(preTax), isNaN(afterTax), isNaN(roth), preTax < 0, afterTax < 0, roth < 0];
+        const validations = [!Number.isFinite(preTax), !Number.isFinite(afterTax), !Number.isFinite(roth), preTax < 0, afterTax < 0, roth < 0];
         const isInvalid = validations.some(validation => validation);
         if (isInvalid) {
             return res.render("contributions", {
